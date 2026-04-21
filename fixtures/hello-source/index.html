@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hello React (from source build)</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 2rem; color: #222; }
+      button { font: inherit; padding: .4rem .8rem; margin-right: .5rem; border: 1px solid #888; border-radius: 4px; background: #f6f6f6; cursor: pointer; }
+      button:hover { background: #eee; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; max-width: 480px; }
+      .ver { color: #888; font-size: .85rem; }
+      .err { color: #b00; white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; font-size: .85rem; }
+    </style>
+  </head>
+
+  <body>
+    <h1>Hello React (from source build)</h1>
+    <p class="ver" id="version">Loading...</p>
+    <div id="root"></div>
+    <pre class="err" id="err"></pre>
+
+    <!--
+      React's `build` script outputs CJS files to
+        build/oss-experimental/<pkg>/cjs/*.development.js
+      These files use `module.exports`, `require(...)`, and
+      `process.env.NODE_ENV`. Browsers don't natively support CJS, so we fetch
+      each file as text and execute it inside a function that supplies the
+      CommonJS globals. Load order matters (see `deps` below).
+    -->
+    <script>
+      window.process = window.process || { env: { NODE_ENV: "development" } };
+
+      const BUILD = "../../build/oss-experimental";
+      const modules = Object.create(null);
+
+      function require(name) {
+        if (!(name in modules)) {
+          throw new Error("Cannot find module '" + name + "'");
+        }
+        return modules[name];
+      }
+
+      async function loadCjs(name, url) {
+        const src = await fetch(url).then((r) => {
+          if (!r.ok) throw new Error(url + " -> HTTP " + r.status);
+          return r.text();
+        });
+        const module = { exports: {} };
+        // `//# sourceURL=...` keeps stack traces / debugger pointing at the
+        // original file when stepping through React internals.
+        const factory = new Function(
+          "module",
+          "exports",
+          "require",
+          "process",
+          src + "\n//# sourceURL=" + url
+        );
+        factory(module, module.exports, require, window.process);
+        modules[name] = module.exports;
+      }
+
+      async function main() {
+        try {
+          await loadCjs("scheduler",        BUILD + "/scheduler/cjs/scheduler.development.js");
+          await loadCjs("react",            BUILD + "/react/cjs/react.development.js");
+          await loadCjs("react-dom",        BUILD + "/react-dom/cjs/react-dom.development.js");
+          await loadCjs("react-dom/client", BUILD + "/react-dom/cjs/react-dom-client.development.js");
+
+          const React = require("react");
+          const ReactDOMClient = require("react-dom/client");
+
+          document.getElementById("version").textContent =
+            "React " + React.version;
+
+          const h = React.createElement;
+          const { useState } = React;
+
+          function Counter() {
+            const [count, setCount] = useState(0);
+            return h(
+              "div",
+              { className: "card" },
+              h("p", null, "You clicked ", h("strong", null, count), " times."),
+              h("button", { onClick: () => setCount((c) => c + 1) }, "Increment"),
+              h("button", { onClick: () => setCount(0) }, "Reset")
+            );
+          }
+
+          const root = ReactDOMClient.createRoot(document.getElementById("root"));
+          root.render(h(Counter));
+        } catch (e) {
+          document.getElementById("version").textContent = "Failed to load";
+          document.getElementById("err").textContent = (e && e.stack) || String(e);
+          throw e;
+        }
+      }
+
+      main();
+    </script>
+  </body>
+</html>
